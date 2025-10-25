@@ -1,6 +1,6 @@
 export interface Participant {id: string;
   name: string;
-  dob: string; // yyyy-mm-dd
+  dob: string;
   email: string;
   phone: string;
 }

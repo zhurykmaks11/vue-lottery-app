@@ -35,13 +35,6 @@
 </template>
 
 
-<style scoped>
-/* Додайте, щоб кнопка видалення була невидима за замовчуванням */
-.badge button:hover {
-  opacity: 1 !important;
-}
-</style>
-
 <script lang="ts">
 import { defineComponent, computed } from 'vue'
 import type { Participant } from '../types'
