@@ -1,5 +1,54 @@
-<script setup lang="ts">
-import { reactive, computed, defineEmits } from 'vue'
+<template>
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">Реєстрація</h5>
+
+      <form @submit.prevent="onSave" novalidate>
+        <UiInput
+          label="Ім'я"
+          v-model="form.name"
+          :error="errors.name || ''"
+          @blur="touched.name = true"
+          @enter="onSave"
+        />
+
+        <UiInput
+          label="Дата народження"
+          v-model="form.dob"
+          type="date"
+          :error="errors.dob || ''"
+          @blur="touched.dob = true"
+        />
+
+        <UiInput
+          label="Email"
+          v-model="form.email"
+          type="email"
+          :error="errors.email || ''"
+          @blur="touched.email = true"
+        />
+
+        <UiInput
+          label="Телефон"
+          v-model="form.phone"
+          :error="errors.phone || ''"
+          @blur="touched.phone = true"
+        />
+
+        <div class="d-flex justify-content-end mt-3">
+          <UiButton variant="info" @click="onSave">
+            {{ initialData ? 'Оновити дані' : 'Зберегти' }}
+          </UiButton>
+        </div>
+      </form>
+    </div>
+  </div>
+</template>
+
+<script lang="ts">
+import { defineComponent } from 'vue'
+import UiInput from './ui/UiInput.vue'
+import UiButton from './ui/UiButton.vue'
 import {
   generateId,
   emailRegex,
@@ -7,163 +56,92 @@ import {
   isFutureDate,
   isTooOldDate,
   flexiblePhoneRegex,
-} from '../utils/validation.ts'
+} from '../utils/validation'
 import type { Participant } from '../types'
 
-const emit = defineEmits<{
-  (e: 'saved', participant: Participant): void
-}>()
+export default defineComponent({
+  name: 'RegistrationForm',
+  components: { UiInput, UiButton },
+  props: {
+    existingEmails: {
+      type: Array as () => string[],
+      default: () => [],
+    },
+    initialData: {
+      type: Object as () => Participant | null,
+      default: null,
+    },
+  },
+  emits: ['save'],
+  data() {
+    return {
+      form: {
+        id: this.initialData?.id || '',
+        name: this.initialData?.name || '',
+        dob: this.initialData?.dob || '',
+        email: this.initialData?.email || '',
+        phone: this.initialData?.phone || '',
+      } as Participant,
+      touched: {
+        name: false,
+        dob: false,
+        email: false,
+        phone: false,
+      } as Record<string, boolean>,
+      errors: {
+        name: null,
+        dob: null,
+        email: null,
+        phone: null,
+      } as Record<string, string | null>,
+    }
+  },
+  methods: {
+    validate(): boolean {
+      const e: Record<string, string | null> = {
+        name: null,
+        dob: null,
+        email: null,
+        phone: null,
+      }
 
-interface RegistrationForm {
-  name: string
-  dob: string // Date of Birth
-  email: string
-  phone: string
-}
+      if (!this.form.name || this.form.name.trim().length < 3) e.name = 'Ім’я мінімум 3 символи'
 
-interface FormErrors {
-  name: string | null
-  dob: string | null
-  email: string | null
-  phone: string | null
-}
+      if (!this.form.dob) e.dob = 'Дата обов’язкова'
+      else if (isFutureDate(this.form.dob)) e.dob = 'Дата не може бути у майбутньому'
+      else if (isTooOldDate(this.form.dob)) e.dob = 'Дата не може бути раніше 1900 року'
 
-interface TouchedFields {
-  name: boolean
-  dob: boolean
-  email: boolean
-  phone: boolean
-}
+      if (!this.form.email) e.email = 'Email обов’язковий'
+      else if (!emailRegex.test(this.form.email)) e.email = 'Некоректний email'
+      else if (
+        this.existingEmails.includes(this.form.email) &&
+        (!this.initialData || this.form.email !== this.initialData.email)
+      )
+        e.email = 'Такий email вже використовується'
 
-const initialFormState: RegistrationForm = { name: '', dob: '', email: '', phone: '' }
-const initialTouchedState: TouchedFields = { name: false, dob: false, email: false, phone: false }
+      if (!this.form.phone) e.phone = 'Телефон обов’язковий'
+      else if (!phoneRegex.test(this.form.phone)) e.phone = 'Некоректний номер'
+      else if (!flexiblePhoneRegex.test(this.form.phone))
+        e.phone = 'Телефон має містити від розпочинатися з +380 '
 
-const form: RegistrationForm = reactive({ ...initialFormState })
-const touched: TouchedFields = reactive({ ...initialTouchedState })
+      this.errors = e
+      return !Object.values(e).some((x) => x !== null)
+    },
 
-const isRequired = (value: string): string | null => {
-  return value.trim() ? null : "Це поле є обов'язковим."
-}
+    onSave() {
+      Object.keys(this.touched).forEach((k) => (this.touched[k] = true))
+      if (!this.validate()) return
 
-const errors = computed<FormErrors>(() => {
-  const currentErrors: FormErrors = {
-    name: isRequired(form.name),
-    dob: isRequired(form.dob),
-    email: isRequired(form.email),
-    phone: isRequired(form.phone),
-  }
+      const payload: Participant = { ...this.form }
+      if (!payload.id) payload.id = generateId()
 
-  if (currentErrors.name === null && form.name && form.name.length < 3) {
-    currentErrors.name = "Ім'я має бути не менше 3 символів."
-  }
+      this.$emit('save', payload)
 
-  if (currentErrors.dob === null && form.dob && isFutureDate(form.dob)) {
-    currentErrors.dob = 'Дата народження не може бути у майбутньому.'
-  }
-  if (currentErrors.dob === null && form.dob && isTooOldDate(form.dob)) {
-    currentErrors.dob = 'Дата народження не можу бути раніше 1900 року'
-  }
-
-  if (currentErrors.email === null && form.email && !emailRegex.test(form.email)) {
-    currentErrors.email = 'Будь ласка, введіть коректну електронну пошту.'
-  }
-  if (currentErrors.phone === null && form.phone && !flexiblePhoneRegex.test(form.phone)) {
-    currentErrors.phone ='Будь ласка номер розпочинайте з +380';
-  }
-  if (currentErrors.phone === null && form.phone && !phoneRegex.test(form.phone)) {
-    currentErrors.phone = 'Будь ласка, введіть коректний номер телефону (мін. 6 символів).'
-  }
-  return currentErrors
+      if (!this.initialData) {
+        this.form = { id: '', name: '', dob: '', email: '', phone: '' }
+        this.touched = { name: false, dob: false, email: false, phone: false }
+      }
+    },
+  },
 })
-
-const hasErrors = computed<boolean>(() => {
-  return Object.values(errors.value).some((error) => error !== null)
-})
-
-const resetForm = () => {
-  Object.assign(form, initialFormState)
-  Object.assign(touched, initialTouchedState)
-}
-
-const onSave = () => {
-  ;(Object.keys(touched) as (keyof TouchedFields)[]).forEach((key) => {
-    touched[key] = true
-  })
-  if (hasErrors.value) {
-    console.warn('Валідація не пройдена. Помилки форми:', errors.value)
-    return
-  }
-  const newParticipant: Participant = {
-    ...form,
-    id: generateId(),
-  }
-  emit('saved', newParticipant)
-  resetForm()
-  console.log('Учасник успішно зареєстрований:', newParticipant)
-}
 </script>
-
-<template>
-  <div class="card mb-3">
-    <div class="card-body">
-      <h5 class="card-title text-uppercase mb-3">REGISTER FORM</h5>
-      <p class="text-muted small mb-4">Please fill in all the fields.</p>
-
-      <form @submit.prevent="onSave" novalidate>
-        <div class="mb-3">
-          <label class="form-label">Name</label>
-          <input
-            v-model="form.name"
-            :class="['form-control', touched.name && errors.name ? 'is-invalid' : '']"
-            type="text"
-            placeholder="Enter user name"
-            @blur="touched.name = true"
-          />
-          <div class="invalid-feedback">{{ errors.name }}</div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Date of Birth</label>
-          <input
-            v-model="form.dob"
-            :class="['form-control', touched.dob && errors.dob ? 'is-invalid' : '']"
-            type="date"
-            placeholder="mm/dd/yyyy"
-            @blur="touched.dob = true"
-          />
-          <div class="invalid-feedback">{{ errors.dob }}</div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Email</label>
-          <input
-            v-model="form.email"
-            :class="['form-control', touched.email && errors.email ? 'is-invalid' : '']"
-            type="email"
-            placeholder="Enter email"
-            @blur="touched.email = true"
-          />
-          <div class="invalid-feedback">{{ errors.email }}</div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Phone number</label>
-          <input
-            v-model="form.phone"
-            :class="['form-control', touched.phone && errors.phone ? 'is-invalid' : '']"
-            type="text"
-            placeholder="Enter Phone number"
-            @blur="touched.phone = true"
-          />
-          <div class="invalid-feedback">{{ errors.phone }}</div>
-        </div>
-
-        <div class="d-flex justify-content-end mt-4">
-          <button type="submit" class="btn btn-info text-white">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</template>
-
-<style scoped></style>
